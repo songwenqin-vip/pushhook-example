@@ -1,0 +1,60 @@
+#!/bin/bash
+
+isEmpty(){
+  IFS=':' read -ra str_array <<<$1 
+  if test ${#str_array[@]} -gt 1 ; then
+    return 1
+  fi
+  return 0 
+}
+
+
+branch=`git rev-parse --abbrev-ref HEAD`
+if [[ "$branch" =~ "topic/" ]]; then
+  exit 0;
+fi
+
+red=`tput setaf 1`
+reset=`tput sgr0`
+
+result=0
+commits=`git cherry`
+set -f                      
+array=(${commits//+/ })
+overall_prevent=0
+for i in "${!array[@]}"
+do
+    push_prevent=0
+    error_str=""
+
+    commit=`git show ${array[i]}|grep -B 1 'Author:'|grep 'commit'`
+    bug_number=`git show ${array[i]}|grep 'Bug number:'`
+    jira_issue=`git show ${array[i]}|grep 'Jira issue:'`
+    reviewed_by=`git show ${array[i]}|grep 'Reviewed by:'`
+    approved_by=`git show ${array[i]}|grep 'Approved by:'`
+    review_url=`git show ${array[i]}|grep 'Review URL:'`
+
+    if isEmpty "$bug_number" -a isEmpty "$jira_issue"; then
+      error_str="$error_str Bug number / Jira issue,"
+      push_prevent=1
+    fi
+    if isEmpty "$reviewed_by"; then
+      error_str="$error_str Reviewed by,"
+      push_prevent=1
+    fi
+    if isEmpty "$approved_by"; then
+      error_str="$error_str Approved by,"
+      push_prevent=1
+    fi
+    if isEmpty "$review_url"; then
+      error_str="$error_str Review URL"
+      push_prevent=1
+    fi
+    
+    if test $push_prevent -ne 0; then
+      echo "$red  ERROR: $commit cannot be pushed since the following fields are empty: $reset"
+      echo "       $error_str"
+      overall_prevent=1
+    fi
+done
+exit $overall_prevent
